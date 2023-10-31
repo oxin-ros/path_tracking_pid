@@ -155,7 +155,6 @@ private:
 
   // Cancel flags (multi threaded, so atomic bools)
   std::atomic<bool> active_goal_{false};
-  std::atomic<bool> cancel_requested_{false};
   std::atomic<bool> cancel_in_progress_{false};
 
   // dynamic reconfiguration

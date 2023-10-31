@@ -268,11 +268,6 @@ std::optional<geometry_msgs::Twist> TrackingPidLocalPlanner::computeVelocityComm
   feedback_msg.progress = update_result.progress;
   feedback_pub_.publish(feedback_msg);
 
-  if (cancel_requested_) {
-    pid_controller_.reset();
-    cancel_requested_ = false;
-  }
-
   if (controller_debug_enabled_) {
     debug_pub_.publish(update_result.pid_debug);
 
@@ -290,7 +285,9 @@ std::optional<geometry_msgs::Twist> TrackingPidLocalPlanner::computeVelocityComm
   prev_time_ = now;
   prev_dt_ =
     dt;  // Store last known valid dt for next cycles (https://github.com/magazino/move_base_flex/issues/195)
-  return update_result.velocity_command;
+
+  // In order to stop when a cancel was requested, we just return an empty Twist message here
+  return cancel_in_progress_ ? geometry_msgs::Twist() : update_result.velocity_command;
 }
 
 std::vector<tf2::Transform> TrackingPidLocalPlanner::projectionSteps()
@@ -526,7 +523,6 @@ bool TrackingPidLocalPlanner::isGoalReached(
 bool TrackingPidLocalPlanner::cancel()
 {
   // This function runs in a separate thread
-  cancel_requested_ = true;
   cancel_in_progress_ = true;
   ros::Rate r(10);
   ROS_INFO("Cancel requested, waiting in loop for cancel to finish");
