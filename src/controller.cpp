@@ -40,7 +40,7 @@ bool is_pose_angle_obtuse(
 /**
  * Checks the given plan. The first and last poses are always accepted (if they exist). Intermediate
  * poses are only accepted if the angle (with respect to the previous and next poses) is obtuse.
- * 
+ *
  * @param[in] plan Plan to check.
  * @return True if all poses in the plan are accepted. False otherwise.
  */
@@ -206,13 +206,6 @@ bool Controller::setPlan(
       break;
   }
 
-  // When velocity error is too big reset current_x_vel
-  if (fabs(odom_twist.linear.x - controller_state_.current_x_vel) > config_.max_error_x_vel) {
-    // TODO(clopez/mcfurry/nobleo): Give feedback to higher level software here
-    ROS_WARN(
-      "Large control error. Current_x_vel %f / odometry %f", controller_state_.current_x_vel,
-      odom_twist.linear.x);
-  }
   controller_state_.end_phase_enabled = false;
   controller_state_.end_reached = false;
 
@@ -331,7 +324,7 @@ Controller::FindPoseOnPlanResult Controller::findPoseOnPlan(
 
 Controller::UpdateResult Controller::update(
   double target_x_vel, double target_end_x_vel, const tf2::Transform & current_tf,
-  const geometry_msgs::Twist & odom_twist, ros::Duration dt)
+  const geometry_msgs::Twist & /*odom_twist*/, ros::Duration dt)
 {
   UpdateResult result;
 
@@ -448,7 +441,7 @@ Controller::UpdateResult Controller::update(
   // However, if robot is not facing to the same direction as the local velocity target vector, don't enable end_phase.
   // This is to avoid skipping paths that start with opposite velocity.
   if ((distance_to_goal <= fabs(d_end_phase)) && in_direction_of_goal) {
-    // This state will be remebered to avoid jittering on target_x_vel
+    // This state will be remembered to avoid jittering on target_x_vel
     controller_state_.end_phase_enabled = true;
   }
 
@@ -497,15 +490,6 @@ Controller::UpdateResult Controller::update(
     fabs(target_end_x_vel) <= fabs(min_vel) + VELOCITY_EPS &&
     fabs(new_x_vel) <= fabs(min_vel) + VELOCITY_EPS) {
     new_x_vel = min_vel;
-  }
-
-  // When velocity error is too big reset current_x_vel
-  if (
-    fabs(odom_twist.linear.x) < fabs(current_target_x_vel_) &&
-    fabs(odom_twist.linear.x - new_x_vel) > config_.max_error_x_vel) {
-    // TODO(clopez/mcfurry/nobleo): Give feedback to higher level software here
-    ROS_WARN_THROTTLE(
-      1.0, "Large tracking error. Current_x_vel %f / odometry %f", new_x_vel, odom_twist.linear.x);
   }
 
   // Force target_end_x_vel at the very end of the path
