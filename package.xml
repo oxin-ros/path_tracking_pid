@@ -18,10 +18,12 @@
   <build_export_depend>message_runtime</build_export_depend>
   <depend>actionlib</depend>
   <depend>actionlib_msgs</depend>
+  <depend>base_local_planner</depend>
   <depend>dynamic_reconfigure</depend>
   <depend>geometry_msgs</depend>
   <depend>mbf_costmap_core</depend>
   <depend>mbf_msgs</depend>
+  <depend>nav_core</depend>
   <depend>nav_msgs</depend>
   <depend>pluginlib</depend>
   <depend>roscpp</depend>
