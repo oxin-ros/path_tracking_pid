@@ -263,7 +263,7 @@ std::optional<geometry_msgs::Twist> TrackingPidLocalPlanner::computeVelocityComm
 
     if (isCollisionImminent(robot_pose, linear_vel, angular_vel)) {
       pid_controller_.setVelMaxObstacle(0.0);
-      ROS_WARN("TrackingPidLocalPlanner detected collision ahead!");
+      ROS_DEBUG("TrackingPidLocalPlanner detected collision ahead!");
     } else if (pid_controller_.getConfig().obstacle_speed_reduction) {
       // double max_vel = pid_controller_.getConfig().max_x_vel;
       // double reduction_factor = static_cast<double>(cost) / costmap_2d::LETHAL_OBSTACLE;
@@ -273,6 +273,7 @@ std::optional<geometry_msgs::Twist> TrackingPidLocalPlanner::computeVelocityComm
       ROS_WARN_THROTTLE(
         1.0, "TrackingPidLocalPlanner obstacle_speed_reduction is not implemented yet!");
     } else {
+      ROS_DEBUG("TrackingPidLocalPlanner No collision imminent!");
       pid_controller_.setVelMaxObstacle(INFINITY);  // set back to inf
     }
   } else {
@@ -332,7 +333,12 @@ bool TrackingPidLocalPlanner::inCollision(
     const double footprint_cost = costmap_model_->footprintCost(
         x, y, theta, costmap_ros_->getRobotFootprint());
 
-    return footprint_cost == -1;
+    // This condition considers three cases:
+    //
+    // 1. Lethal obstacles (footprint_cost == costmap_2d::LETHAL_OBSTACLE)
+    // 2. Inflated obstacles (footprint_cost == costmap_2d::INSCRIBED_INFLATED_OBSTACLE)
+    // 3. Unknown obstacles (footprint_cost == costmap_2d::NO_INFORMATION)
+    return footprint_cost >= costmap_2d::INSCRIBED_INFLATED_OBSTACLE;
 }
 
 bool TrackingPidLocalPlanner::isCollisionImminent(
@@ -344,63 +350,59 @@ bool TrackingPidLocalPlanner::isCollisionImminent(
   curr_pose.y = robot_pose.pose.position.y;
   curr_pose.theta = tf2::getYaw(robot_pose.pose.orientation);
 
-  // Check current point is OK
-  if (inCollision(curr_pose.x, curr_pose.y, curr_pose.theta))
-  {
+  // Check if the previous projection step is in collision.
+  // This avoids issues with the footprint projection changing with the speed of the robot,
+  // and the robot being able to drive closer to the obstacles.
+  if (!projection_steps_.empty() && inCollision(
+        projection_steps_.back().getOrigin().x(),
+        projection_steps_.back().getOrigin().y(),
+        tf2::getYaw(projection_steps_.back().getRotation()))) {
+    ROS_DEBUG_THROTTLE(5.0, "Collision detected at last projection step");
     return true;
+  } else {
+    projection_steps_.clear();
   }
 
+  const auto footprint = costmap_ros_->getRobotFootprint();
+
+  // Calculate dynamic lookahead distances
   const auto velocity_vector = std::hypot(linear_vel, angular_vel);
   const auto projection_time = costmap_->getResolution() / velocity_vector;  // [s]
 
-  // Calculate dynamic lookahead distances
-  // const auto look_ahead_dist = pid_controller_.getConfig().collision_look_ahead_length_offset;
-  const auto look_ahead_dist = pid_controller_.getConfig().collision_look_ahead_length_offset \
-      + fmax(linear_vel, 0) * pid_controller_.getConfig().collision_look_ahead_time;
-
-  const geometry_msgs::Point & robot_xy = robot_pose.pose.position;
-
-  std::vector<tf2::Transform> projection_steps;
-
-  // only forward simulate within time requested
-  int i = 1;
+  // Only forward simulate within time requested
+  bool in_collision = false;
+  size_t i = 0;
   while (i * projection_time < pid_controller_.getConfig().collision_look_ahead_time) {
     i++;
 
-    // predict future pose (using second order midpoint method)
+    // Predict future pose (using second order midpoint method)
     const auto delta_theta = projection_time * angular_vel / 2;
     const double midpoint_yaw = curr_pose.theta + delta_theta;
     auto delta_pos = tf2::Matrix3x3(createQuaternionFromYaw(midpoint_yaw))
-        * tf2::Vector3(linear_vel, 0, 0) * projection_time;  // m_lookahead_time
+        * tf2::Vector3(linear_vel, 0, 0) * projection_time;
 
-    // apply velocity at curr_pose over distance
-    // curr_pose.x += projection_time * (linear_vel * cos(curr_pose.theta));
-    // curr_pose.y += projection_time * (linear_vel * sin(curr_pose.theta));
+    // Apply velocity at curr_pose over distance
     curr_pose.x += delta_pos.x();
     curr_pose.y += delta_pos.y();
     curr_pose.theta += delta_theta;
-
-    // check if past carrot pose, where no longer a thoughtfully valid command
-    if (hypot(curr_pose.x - robot_xy.x, curr_pose.y - robot_xy.y) > look_ahead_dist) {
-      break;
-    }
 
     // Visualize
     // Project footprint forward
     tf2::Quaternion orientation;
     orientation.setRPY(0.0, 0.0, curr_pose.theta);
-    projection_steps.push_back(tf2::Transform(orientation, tf2::Vector3(curr_pose.x, curr_pose.y, 0.0)));
+    projection_steps_.push_back(tf2::Transform(orientation, tf2::Vector3(curr_pose.x, curr_pose.y, 0.0)));
 
     // check for collision at the projected pose
     if (inCollision(curr_pose.x, curr_pose.y, curr_pose.theta)) {
-      return true;
+      in_collision = true;
+      break;
     }
   }
 
-  const std::vector<geometry_msgs::Point> footprint = costmap_ros_->getRobotFootprint();
-  projectionFootprint(footprint, projection_steps, visualization_, map_frame_);
-
-  return false;
+  // No collision detected
+  // Visualise the projected footprints
+  projectionFootprint(footprint, projection_steps_, visualization_, map_frame_);
+  return in_collision;
 }
 
 boost::geometry::model::ring<geometry_msgs::Point> TrackingPidLocalPlanner::projectionFootprint(

@@ -198,7 +198,11 @@ private:
 
   std::vector<geometry_msgs::PoseStamped> global_plan_map_frame_;
 
+  // Odometry helper class
   base_local_planner::OdometryHelperRos odom_helper_;
+
+  // Projected footprints for collision detection
+  std::vector<tf2::Transform> projection_steps_;
 };
 
 }  // namespace path_tracking_pid
