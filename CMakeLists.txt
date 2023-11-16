@@ -7,11 +7,13 @@ find_package(catkin REQUIRED
   COMPONENTS
     actionlib
     actionlib_msgs
+    base_local_planner
     dynamic_reconfigure
     geometry_msgs
     mbf_costmap_core
     mbf_msgs
     message_generation
+    nav_core
     nav_msgs
     pluginlib
     roscpp
@@ -46,11 +48,13 @@ catkin_package(
   CATKIN_DEPENDS
     actionlib
     actionlib_msgs
+    base_local_planner
     dynamic_reconfigure
     geometry_msgs
     mbf_costmap_core
     mbf_msgs
     message_runtime
+    nav_core
     nav_msgs
     pluginlib
     roscpp
